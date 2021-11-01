@@ -109,11 +109,12 @@ int parse_command(char *buf, struct command_t *command)
 
 	char *pch = strtok(buf, splitters);
 	command->name=(char *)malloc(strlen(pch)+1);
-	if (pch==NULL)
+	if (pch==NULL) {
 		command->name[0]=0;
-	else
+	}
+	else {
 		strcpy(command->name, pch);
-
+	}
 	command->args=(char **)malloc(sizeof(char *));
 
 	int redirect_index;
@@ -351,6 +352,10 @@ int process_command(struct command_t *command)
 		// add a NULL argument to the end of args, and the name to the beginning
 		// as required by exec
 
+		//Creating the destination string for execv() command
+		char bin[40] = "/bin/";
+		strcat(bin, command->name);
+
 		// increase args size by 2
 		command->args=(char **)realloc(
 			command->args, sizeof(char *)*(command->arg_count+=2));
@@ -364,9 +369,8 @@ int process_command(struct command_t *command)
 		// set args[arg_count-1] (last) to NULL
 		command->args[command->arg_count-1]=NULL;
 
-		execvp(command->name, command->args); // exec+args+path
+		execv(bin, command->args);
 		exit(0);
-		/// TODO: do your own exec with path resolving using execv()
 	}
 	else
 	{
