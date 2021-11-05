@@ -8,6 +8,10 @@
 #include <errno.h>
 const char * sysname = "shellington";
 
+//Variables for storing data for short command.
+char **alias, **wd;
+int *saveCount;
+
 enum return_codes {
 	SUCCESS = 0,
 	EXIT = 1,
@@ -300,9 +304,45 @@ int prompt(struct command_t *command)
     tcsetattr(STDIN_FILENO, TCSANOW, &backup_termios);
   	return SUCCESS;
 }
+
+// Dynamic memory allocating used to store data of the short command.
+void mallocShort(){
+	int i; int j;
+	alias = (char**)malloc(sizeof(char*)*50);
+    for(i=0; i<50; i++)
+    {
+       alias[i] = (char*)malloc(sizeof(char)*50);
+    }
+
+	wd = (char**)malloc(sizeof(char*)*50);
+    for(j=0; j<50; j++)
+    {
+       wd[j] = (char*)malloc(sizeof(char)*50);
+
+    }
+	saveCount = (int*)malloc(sizeof(int));
+	(*saveCount) = 0;
+}
+
+// Freeing the allocated space for data storage units of short command.
+void freeShort() {
+	int i; int j;
+	for(i=0; i<50; i++)
+    {
+       free(alias[i]);
+    }
+	for(j=0; j<50; j++)
+    {
+       free(wd[i]);
+    }
+	free(alias);
+	free(wd);
+	free(saveCount);
+}
 int process_command(struct command_t *command);
 int main()
 {
+	mallocShort(); // Calling the function the allocate space for short command.
 	while (1)
 	{
 		struct command_t *command=malloc(sizeof(struct command_t));
@@ -317,7 +357,7 @@ int main()
 
 		free_command(command);
 	}
-
+	freeShort(); // Freeing space allocated for the short command.
 	printf("\n");
 	return 0;
 }
@@ -369,18 +409,52 @@ int process_command(struct command_t *command)
 		// set args[arg_count-1] (last) to NULL
 		command->args[command->arg_count-1]=NULL;
 
-		execv(bin, command->args);
-		exit(0);
+		// Checking if a custom command is called. If so, skip execv().
+		if(strcmp(command->name, "short") == 0) {
+			exit(0);
+		}
+		else {
+			execv(bin, command->args); // Executing UNIX commands here
+			exit(0);
+		}
 	}
 	else
 	{
-		if (!command->background)
-			wait(0); // wait for child process to finish
+		if (!command->background) wait(0); // wait for child process to finish
+		
+		// Check if short custom command is called.
+		if(strcmp(command->name, "short") == 0) {
+			if(strcmp(command->args[0], "set") == 0) { // Check if first args is: set
+				int j;
+				char cwd[1024];	
+				getcwd(cwd, sizeof(cwd));	// Getting the current working directory.
+
+				for(j = 0; j < (*saveCount); j++){ // Iterating to see if the alias is already saved. If so, update the directory and keep the alias.
+					if(strcmp(command->args[1], alias[j]) == 0){
+						wd[j] = strdup(cwd);
+						printf("An alias named %s already has been found, overriding the path.\n", alias[j]);	
+						return SUCCESS;
+					}
+				}
+				alias[(*saveCount)] = strdup(command->args[1]);	// If alias is new, save to the storage.
+				wd[(*saveCount)] = strdup(cwd);
+				(*saveCount)++;	// Increment to keep track of how many pairs we have.
+				printf("New alias %s is saved. Curent alias number: %d\n", command->args[1], *saveCount);
+			}
+			if(strcmp(command->args[0], "jump") == 0) { // Check if first arg is: jump
+				int i;
+				for(i = 0; i < (*saveCount); i++){
+					if(strcmp(command->args[1], alias[i]) == 0) {	// If alias is saved, jump to the saved directory.
+						chdir(wd[i]);	
+						printf("Alias %s found, changing dir.\n", alias[i]);
+						return SUCCESS;
+					}
+				}
+				printf("There is no such alias as %s, try again.\n", command->args[1]); 	//If there is no alias saved, print error.
+			}
+		} 
 		return SUCCESS;
 	}
-
-	// TODO: your implementation here
-
 	printf("-%s: %s: command not found\n", sysname, command->name);
 	return UNKNOWN;
 }
