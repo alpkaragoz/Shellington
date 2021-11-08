@@ -413,6 +413,123 @@ int process_command(struct command_t *command)
 		if(strcmp(command->name, "short") == 0) {
 			exit(0);
 		}
+		// Check if bookmark is called, this function works with reading and writing to a .txt file.
+		else if(strcmp(command->name, "bookmark") == 0){
+			FILE *fptr = NULL;
+			FILE *ftemp = NULL;
+
+			if(strcmp(command->args[1], "-l") == 0){ // Printing the current bookmarks.
+				char buffer[256];
+				int line = 0;
+				fptr = fopen("bookmarks.txt", "r");
+				if(fptr == NULL) {
+					printf("Error opening bookmarks.\n");	
+					exit(0);
+				}
+				while (fgets(buffer, 256, fptr)){
+					printf("\t%d %s", line, buffer);
+					line++;
+				}
+				fclose(fptr);
+			}
+			
+			else if(strcmp(command->args[1], "-d") == 0){ // Deleting the bookmark according to given index.
+				int index = atoi(command->args[2]);
+				int line = 0;
+				char buffer[256];
+				int currentLine = 0;
+				fptr = fopen("bookmarks.txt", "r");
+				ftemp = fopen("temp.txt", "a+");		// Creating a temp .txt file.
+				if(fptr == NULL) {						
+					printf("Error deleting bookmarks.\n");	
+					exit(0);
+				}
+				if(ftemp == NULL) {
+					printf("Error deleting bookmark.\n");	
+					exit(0);
+				}
+				while (fgets(buffer, 256, fptr)){	//Copying the original text to temp text file.
+					if(currentLine == index) {
+						currentLine++;
+						continue;
+					}
+					fputs(buffer, ftemp);
+					currentLine++;
+				}
+				fclose(fptr);
+				fclose(ftemp);
+				remove("bookmarks.txt");				//Deleting the original one and renaming the temp to intended name.
+				rename("temp.txt", "bookmarks.txt");
+			}
+			
+			else if(strcmp(command->args[1], "-i") == 0){
+				struct command_t *bookmarkCommand=malloc(sizeof(struct command_t));	// Use command struct to generate a command from txt.
+				int index = atoi(command->args[2]);	
+				int count = 0;
+				char *dir;
+				char buffer[256];
+				char bookmarkBin[256] = "/bin/";
+				int i, j, len;
+				fptr = fopen("bookmarks.txt", "r");
+				if(fptr == NULL) {
+					printf("Error opening bookmarks.\n");	
+					exit(0);
+				}
+				while (fgets(buffer, 256, fptr)){	//Getting the line user wants to execute.
+					if(count == index) {
+						dir = strdup(buffer);
+						break;
+					}
+					count++;
+				}
+				len = strlen(dir);					//Removing the " and \n from the command we got.
+				for(i=0; i<len; i++) {
+        			if((dir[i] == '\"') || (dir[i] == '\n')) {		
+            			for(j=i; j<len; j++){	
+                		dir[j] = dir[j+1];
+            			}
+            		len--;
+            		i--;
+        			}
+    			}
+				parse_command(dir, bookmarkCommand);	// Using the already defined parser.
+
+				// increase args size by 2
+				bookmarkCommand->args=(char **)realloc(
+				bookmarkCommand->args, sizeof(char *)*(bookmarkCommand->arg_count+=2));
+
+				// shift everything forward by 1
+				for (int i=bookmarkCommand->arg_count-2;i>0;--i)
+				bookmarkCommand->args[i]=bookmarkCommand->args[i-1];
+
+				// set args[0] as a copy of name
+				bookmarkCommand->args[0]=strdup(bookmarkCommand->name);
+				// set args[arg_count-1] (last) to NULL
+				bookmarkCommand->args[bookmarkCommand->arg_count-1]=NULL;
+
+				strcat(bookmarkBin, bookmarkCommand->name);
+				execv(bookmarkBin, bookmarkCommand->args);	//Using execv to execute the commands.
+				free(bookmarkCommand);
+				fclose(fptr);
+			}
+
+			else{
+				int i = 1;				
+				fptr = fopen("bookmarks.txt", "a+");
+				if(fptr == NULL) {
+					printf("Error inserting bookmark.\n");	
+					exit(0);
+				}
+				while(command->args[i] != NULL) {
+					fputs(command->args[i], fptr);
+					fputs(" ", fptr);
+					i++;
+				}
+				fprintf(fptr, "\n");
+				fclose(fptr);
+			}
+			exit(0);
+		}
 		else {
 			execv(bin, command->args); // Executing UNIX commands here
 			exit(0);
