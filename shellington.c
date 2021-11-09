@@ -6,11 +6,29 @@
 #include <string.h>
 #include <stdbool.h>
 #include <errno.h>
+
+// Additional includes
+#include <time.h>
+#include <ctype.h>
+
+// Color definations for printf colorizing
+#define COLOR_RED     "\x1b[31m"
+#define COLOR_GREEN   "\x1b[32m"
+#define COLOR_YELLOW  "\x1b[33m"
+#define COLOR_BLUE    "\x1b[34m"
+#define COLOR_MAGENTA "\x1b[35m"
+#define COLOR_CYAN    "\x1b[36m"
+#define COLOR_RESET   "\x1b[0m"
+
+// Constant system name
 const char * sysname = "shellington";
 
 //Variables for storing data for short command.
 char **alias, **wd;
 int *saveCount;
+
+// Counter for custom command rps
+int *rps_counter;
 
 enum return_codes {
 	SUCCESS = 0,
@@ -323,7 +341,10 @@ void mallocShort(){
 	saveCount = (int*)malloc(sizeof(int));
 	(*saveCount) = 0;
 }
-
+//Malloc to keep the scores, user score is index0 and shellington score is index1
+void malloc_rps() {
+	rps_counter = (int*)malloc(sizeof(int)*2); 
+}
 // Freeing the allocated space for data storage units of short command.
 void freeShort() {
 	int i; int j;
@@ -339,9 +360,14 @@ void freeShort() {
 	free(wd);
 	free(saveCount);
 }
+// Free allocated space for custom command
+void free_rps() {
+	free(rps_counter);
+}
 int process_command(struct command_t *command);
 int main()
 {
+	malloc_rps(); // Malloc for rps custom command
 	mallocShort(); // Calling the function the allocate space for short command.
 	while (1)
 	{
@@ -357,6 +383,7 @@ int main()
 
 		free_command(command);
 	}
+	free_rps(); // Free allocated space for rps custom command
 	freeShort(); // Freeing space allocated for the short command.
 	printf("\n");
 	return 0;
@@ -409,7 +436,7 @@ int process_command(struct command_t *command)
 		// set args[arg_count-1] (last) to NULL
 		command->args[command->arg_count-1]=NULL;
 
-		// Checking if a custom command is called. If so, skip execv().
+		// Checking if a custom command is called. 
 		if(strcmp(command->name, "short") == 0) {
 			exit(0);
 		}
@@ -569,7 +596,74 @@ int process_command(struct command_t *command)
 				}
 				printf("There is no such alias as %s, try again.\n", command->args[1]); 	//If there is no alias saved, print error.
 			}
-		} 
+		}
+
+		//Check if custom command rps is called. (Short for Rock, Paper, Scissors)
+        else if (strcmp(command->name, "rps") == 0) {
+			if(command->arg_count == 0) {
+				printf("Not enough arguments given, try again.\n"); // Return if args are not enough
+				return UNKNOWN;
+			}
+			int i;
+			srand(time(NULL)); 
+			int random_var = rand() % 3;  // Random number generator for shellington to determine the move.
+			char *moves[3];				  // Array containing move names.
+			moves[0] = strdup("rock");	
+			moves[1] = strdup("paper");
+			moves[2] = strdup("scissors");
+			char *linux_move = strdup(moves[random_var]); 	// Picking the move for shellington via random generated number.
+			char *user_move = strdup(command->args[0]);		// Getting the user input.
+			for(i = 0; i < strlen(user_move); i++) {
+				user_move[i] = tolower(user_move[i]);		// lowercase convertion to compare moves.
+			}
+            printf("Rock!\n");								
+			sleep(1);
+			printf("Paper!\n");
+			sleep(1);
+			printf("Scissors!\n");
+			sleep(1);
+			printf("You said: %s!\nShellington said %s!\n", user_move, linux_move);
+
+			//Checking which move wins over the other, printing the result and storing the data.
+			if(strcmp(user_move, moves[0]) == 0) {	
+				if(random_var == 0) printf(COLOR_YELLOW "That's a tie!\n" COLOR_RESET);
+				if(random_var == 1) {
+					printf(COLOR_RED "Paper beats rock! You lost.\n" COLOR_RESET);
+					(*(rps_counter+1))++;	//Incrementing the 1st index of the pointer if user loses.
+					}
+				if(random_var == 2) {
+					printf(COLOR_GREEN "Rock beats Scissors! You won.\n" COLOR_RESET);
+					(*rps_counter)++;	// Incrementing the 0th index of the pointer if user wins.
+				}
+			}
+			else if(strcmp(user_move, moves[1]) == 0) {
+				if(random_var == 1) printf(COLOR_YELLOW "That's a tie!\n" COLOR_RESET);
+				if(random_var == 0) {
+					printf(COLOR_GREEN "Paper beats rock! You won.\n" COLOR_RESET);
+					(*rps_counter)++;
+					}
+				if(random_var == 2) {
+					printf(COLOR_RED "Scissors beats paper! You lost.\n" COLOR_RESET);
+					(*(rps_counter+1))++;
+					}
+				}
+			else if(strcmp(user_move, moves[2]) == 0) {
+				if(random_var == 2) printf(COLOR_YELLOW "That's a tie!\n" COLOR_RESET);
+				if(random_var == 0) {
+					printf(COLOR_RED "Rock beats Scissors! You lost.\n" COLOR_RESET);
+					(*(rps_counter+1))++;
+					}
+				if(random_var == 1) {
+					printf(COLOR_GREEN "Scissors beats paper! You won.\n" COLOR_RESET);
+					(*rps_counter)++;
+					}
+				}
+			else {
+				printf("That move does not exist! Try again.\n");
+				return UNKNOWN;		
+			}
+			printf("SCOREBOARD: You %d, Shellinton %d\n", *rps_counter, *(rps_counter+1));	
+        } 
 		return SUCCESS;
 	}
 	printf("-%s: %s: command not found\n", sysname, command->name);
