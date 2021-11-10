@@ -436,10 +436,80 @@ int process_command(struct command_t *command)
 		// set args[arg_count-1] (last) to NULL
 		command->args[command->arg_count-1]=NULL;
 
-		// Checking if a custom command is called. 
+		// Check if short is called, if so skip child process.
 		if(strcmp(command->name, "short") == 0) {
 			exit(0);
 		}
+		//Check if rps is called, if so close the child process.
+		else if(strcmp(command->name, "rps") == 0) {
+			exit(0);
+		}
+		// Check if the command is remindme.
+		else if(strcmp(command->name, "remindme") == 0){
+			if (command->arg_count < 4) { // Exit if the args are insufficient.
+				printf("Not enough arguments.\n");
+				exit(0);
+			}
+			FILE *crontab_ptr = NULL; 
+			crontab_ptr = fopen("crontabs.txt", "a+"); //Create a .txt file to store data.
+			if(crontab_ptr == NULL) {
+				printf("Error reaching file.\n");
+				exit(0);
+			}
+
+			int var_i = 2;
+			char *hours = NULL;
+			char *minutes = NULL;
+			char *cron_command = "/bin/crontab";
+			char *crontab_args[3];
+			char *time = strdup(command->args[1]);
+			crontab_args[0] = strdup("/bin/crontab");
+			crontab_args[1] = strdup("crontabs.txt");
+			crontab_args[2] = NULL;
+
+			//Extra command, if user inputs remindme remove all, remove all crontabs and delete the .txt file.
+			if(strcmp(command->args[1], "remove") == 0 && strcmp(command->args[2], "all") == 0) {	
+				remove("crontabs.txt");
+				crontab_args[1] = strdup("-r");
+				execv(cron_command, crontab_args);
+				exit(0);
+			}
+
+			//Splitting the first arg to get the time.
+			int token_count = 0;
+			char *token = strtok(time, ":");
+			while (token != NULL) {
+				if(token_count == 0)
+					hours = strdup(token);
+				if(token_count == 1)
+					minutes = strdup(token);
+				token = strtok(NULL, ":");
+				token_count++;
+			}
+
+			// Print error if the time format was wrong.
+			if((hours == NULL) || (minutes == NULL)) {
+				printf("Invalid format, please use format such as 14:30.\n");
+				exit(0);
+			}
+
+			// Writing data to .txt file to pass on to crontab.
+			fputs(minutes, crontab_ptr);
+			fputs(" ", crontab_ptr);
+			fputs(hours, crontab_ptr);
+			fputs(" * * *  XDG_RUNTIME_DIR=/run/user/$(id -u) notify-send ", crontab_ptr);
+			while (command->args[var_i] != NULL) {
+				fputs((command->args[var_i]), crontab_ptr);
+				fputs(" ", crontab_ptr);
+				var_i++;	
+			}
+			fputs("\n", crontab_ptr);
+			fclose(crontab_ptr);
+			// Executing crontab with the .txt file we created.
+			execv(cron_command, crontab_args); 
+			exit(0);
+		}
+
 		// Check if bookmark is called, this function works with reading and writing to a .txt file.
 		else if(strcmp(command->name, "bookmark") == 0){
 			FILE *fptr = NULL;
@@ -562,6 +632,7 @@ int process_command(struct command_t *command)
 			exit(0);
 		}
 	}
+	//Parent process.
 	else
 	{
 		if (!command->background) wait(0); // wait for child process to finish
@@ -663,7 +734,7 @@ int process_command(struct command_t *command)
 				return UNKNOWN;		
 			}
 			printf("SCOREBOARD: You %d, Shellinton %d\n", *rps_counter, *(rps_counter+1));	
-        } 
+        }
 		return SUCCESS;
 	}
 	printf("-%s: %s: command not found\n", sysname, command->name);
