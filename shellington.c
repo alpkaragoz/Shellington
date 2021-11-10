@@ -23,6 +23,9 @@
 // Constant system name
 const char * sysname = "shellington";
 
+// Save the directory where first shellington is executed.
+char init_dir[1024];
+
 //Variables for storing data for short command.
 char **alias, **wd;
 int *saveCount;
@@ -102,7 +105,17 @@ int show_prompt()
 	char cwd[1024], hostname[1024];
     gethostname(hostname, sizeof(hostname));
 	getcwd(cwd, sizeof(cwd));
-	printf("%s@%s:%s %s$ ", getenv("USER"), hostname, cwd, sysname);
+
+	// Colorizing the promp.
+	printf(COLOR_GREEN);
+	printf("%s@%s:", getenv("USER"), hostname); 
+	printf(COLOR_RESET);
+	printf(COLOR_BLUE);
+	printf("%s ", cwd);
+	printf(COLOR_RESET);
+	printf(COLOR_CYAN);
+	printf("%s$ ", sysname);
+	printf(COLOR_RESET);
 	return 0;
 }
 /**
@@ -367,6 +380,7 @@ void free_rps() {
 int process_command(struct command_t *command);
 int main()
 {
+	getcwd(init_dir, 1024); // Getting the directory that shell first executed.
 	malloc_rps(); // Malloc for rps custom command
 	mallocShort(); // Calling the function the allocate space for short command.
 	while (1)
@@ -446,12 +460,18 @@ int process_command(struct command_t *command)
 		}
 		// Check if the command is remindme.
 		else if(strcmp(command->name, "remindme") == 0){
+			
+			// Getting absolute path of the crontabs.txt file.
+			char crontabs_loc[1024] = "";
+			strcat(crontabs_loc, init_dir);
+			strcat(crontabs_loc, "/crontabs.txt");
+
 			if (command->arg_count < 4) { // Exit if the args are insufficient.
 				printf("Not enough arguments.\n");
 				exit(0);
 			}
 			FILE *crontab_ptr = NULL; 
-			crontab_ptr = fopen("crontabs.txt", "a+"); //Create a .txt file to store data.
+			crontab_ptr = fopen(crontabs_loc, "a+"); //Create a .txt file to store data.
 			if(crontab_ptr == NULL) {
 				printf("Error reaching file.\n");
 				exit(0);
@@ -464,12 +484,12 @@ int process_command(struct command_t *command)
 			char *crontab_args[3];
 			char *time = strdup(command->args[1]);
 			crontab_args[0] = strdup("/bin/crontab");
-			crontab_args[1] = strdup("crontabs.txt");
+			crontab_args[1] = strdup(crontabs_loc);
 			crontab_args[2] = NULL;
 
 			//Extra command, if user inputs remindme remove all, remove all crontabs and delete the .txt file.
 			if(strcmp(command->args[1], "remove") == 0 && strcmp(command->args[2], "all") == 0) {	
-				remove("crontabs.txt");
+				remove(crontabs_loc);
 				crontab_args[1] = strdup("-r");
 				execv(cron_command, crontab_args);
 				exit(0);
@@ -505,6 +525,7 @@ int process_command(struct command_t *command)
 			}
 			fputs("\n", crontab_ptr);
 			fclose(crontab_ptr);
+
 			// Executing crontab with the .txt file we created.
 			execv(cron_command, crontab_args); 
 			exit(0);
@@ -515,10 +536,21 @@ int process_command(struct command_t *command)
 			FILE *fptr = NULL;
 			FILE *ftemp = NULL;
 
-			if(strcmp(command->args[1], "-l") == 0){ // Printing the current bookmarks.
+			// Getting the initial text directory so I can reach it when I change dir on the process. 
+			char bookmark_loc[1024] = "";
+			strcat(bookmark_loc, init_dir);
+			strcat(bookmark_loc, "/bookmarks.txt");
+			
+			//Also creating a temp.txt path for delete operations.		
+			char temp_loc[1024] = "";
+			strcat(temp_loc, init_dir);
+			strcat(temp_loc, "/temp.txt");	
+
+			// Printing the current bookmarks.
+			if(strcmp(command->args[1], "-l") == 0){ 
 				char buffer[256];
 				int line = 0;
-				fptr = fopen("bookmarks.txt", "r");
+				fptr = fopen(bookmark_loc, "r");
 				if(fptr == NULL) {
 					printf("Error opening bookmarks.\n");	
 					exit(0);
@@ -529,14 +561,15 @@ int process_command(struct command_t *command)
 				}
 				fclose(fptr);
 			}
-			
-			else if(strcmp(command->args[1], "-d") == 0){ // Deleting the bookmark according to given index.
+
+			// Deleting the bookmark according to given index.
+			else if(strcmp(command->args[1], "-d") == 0){ 
 				int index = atoi(command->args[2]);
 				int line = 0;
 				char buffer[256];
 				int currentLine = 0;
-				fptr = fopen("bookmarks.txt", "r");
-				ftemp = fopen("temp.txt", "a+");		// Creating a temp .txt file.
+				fptr = fopen(bookmark_loc, "r");
+				ftemp = fopen(temp_loc, "a+");		// Creating a temp .txt file.
 				if(fptr == NULL) {						
 					printf("Error deleting bookmarks.\n");	
 					exit(0);
@@ -555,64 +588,81 @@ int process_command(struct command_t *command)
 				}
 				fclose(fptr);
 				fclose(ftemp);
-				remove("bookmarks.txt");				//Deleting the original one and renaming the temp to intended name.
-				rename("temp.txt", "bookmarks.txt");
+				remove(bookmark_loc);				//Deleting the original one and renaming the temp to intended name.
+				rename(temp_loc, bookmark_loc);
 			}
 			
+			// Executing the command that at index i, if the command is cd, exit and execute it on parent process.
 			else if(strcmp(command->args[1], "-i") == 0){
-				struct command_t *bookmarkCommand=malloc(sizeof(struct command_t));	// Use command struct to generate a command from txt.
 				int index = atoi(command->args[2]);	
-				int count = 0;
-				char *dir;
+				int buffer_counter = 0;
+				char *dir, *to_execute;
 				char buffer[256];
 				char bookmarkBin[256] = "/bin/";
-				int i, j, len;
-				fptr = fopen("bookmarks.txt", "r");
+				int i, j, len, arg_count;
+				fptr = fopen(bookmark_loc, "r");
+
+				// If cannot open the file, exit.
 				if(fptr == NULL) {
 					printf("Error opening bookmarks.\n");	
 					exit(0);
 				}
-				while (fgets(buffer, 256, fptr)){	//Getting the line user wants to execute.
-					if(count == index) {
+
+				//Getting the line user wants to execute.
+				while (fgets(buffer, 256, fptr)) {
+					if(buffer_counter == index) {
 						dir = strdup(buffer);
 						break;
 					}
-					count++;
+					buffer_counter++;
 				}
-				len = strlen(dir);					//Removing the " and \n from the command we got.
-				for(i=0; i<len; i++) {
+				//Removing the " and \n from the command we got.
+				len = strlen(dir);					
+				for(i = 0; i < len; i++) {
         			if((dir[i] == '\"') || (dir[i] == '\n')) {		
-            			for(j=i; j<len; j++){	
+            			for(j = i; j < len; j++){	
                 		dir[j] = dir[j+1];
             			}
             		len--;
             		i--;
         			}
     			}
-				parse_command(dir, bookmarkCommand);	// Using the already defined parser.
 
-				// increase args size by 2
-				bookmarkCommand->args=(char **)realloc(
-				bookmarkCommand->args, sizeof(char *)*(bookmarkCommand->arg_count+=2));
+				//Duplicating the command we parsed.
+				to_execute = strdup(dir);
 
-				// shift everything forward by 1
-				for (int i=bookmarkCommand->arg_count-2;i>0;--i)
-				bookmarkCommand->args[i]=bookmarkCommand->args[i-1];
+				// Using one of the duplicated commands to determine the arg count.
+				arg_count = 0;
+				char *dir_token = strtok(dir, " ");
+				while (dir_token != NULL) {
+					arg_count++;
+					dir_token = strtok(NULL, " ");
+				}
 
-				// set args[0] as a copy of name
-				bookmarkCommand->args[0]=strdup(bookmarkCommand->name);
-				// set args[arg_count-1] (last) to NULL
-				bookmarkCommand->args[bookmarkCommand->arg_count-1]=NULL;
-
-				strcat(bookmarkBin, bookmarkCommand->name);
-				execv(bookmarkBin, bookmarkCommand->args);	//Using execv to execute the commands.
-				free(bookmarkCommand);
+				// Using the other duplicated command to parse out the args and create **pointer for execv.
+				int index_count = 0;
+				char *bookmark_args[arg_count+1];
+				char *token = strtok(to_execute, " ");
+				while (token != NULL) {
+					bookmark_args[index_count] = strdup(token);
+					token = strtok(NULL, " ");
+					index_count++;
+				}
+				// Exit if the command is cd, which child process cannot execute, carry on in parent process.
+				if(strcmp(bookmark_args[0], "cd") == 0) {
+					exit(0);
+				}
+				bookmark_args[arg_count] = NULL;
+				strcat(bookmarkBin, bookmark_args[0]);
 				fclose(fptr);
+				execv(bookmarkBin, bookmark_args);
+				exit(0);
 			}
 
+			// Saving new bookmark to the bookmarks.txt file.
 			else{
 				int i = 1;				
-				fptr = fopen("bookmarks.txt", "a+");
+				fptr = fopen(bookmark_loc, "a+");
 				if(fptr == NULL) {
 					printf("Error inserting bookmark.\n");	
 					exit(0);
@@ -627,8 +677,10 @@ int process_command(struct command_t *command)
 			}
 			exit(0);
 		}
+
+		// Executing UNIX commands here.
 		else {
-			execv(bin, command->args); // Executing UNIX commands here
+			execv(bin, command->args); 
 			exit(0);
 		}
 	}
@@ -639,12 +691,18 @@ int process_command(struct command_t *command)
 		
 		// Check if short custom command is called.
 		if(strcmp(command->name, "short") == 0) {
+			// Return if there is not enough args.
+				if(command->arg_count < 2) {
+					printf("Not enough arguments.\n");
+					return UNKNOWN;
+				}
 			if(strcmp(command->args[0], "set") == 0) { // Check if first args is: set
 				int j;
 				char cwd[1024];	
 				getcwd(cwd, sizeof(cwd));	// Getting the current working directory.
-
-				for(j = 0; j < (*saveCount); j++){ // Iterating to see if the alias is already saved. If so, update the directory and keep the alias.
+			
+				// Iterating to see if the alias is already saved. If so, update the directory and keep the alias.
+				for(j = 0; j < (*saveCount); j++){ 
 					if(strcmp(command->args[1], alias[j]) == 0){
 						wd[j] = strdup(cwd);
 						printf("An alias named %s already has been found, overriding the path.\n", alias[j]);	
@@ -735,6 +793,71 @@ int process_command(struct command_t *command)
 			}
 			printf("SCOREBOARD: You %d, Shellinton %d\n", *rps_counter, *(rps_counter+1));	
         }
+
+		// Checking if the bookmark -i invokes a cd, command. If so execute, otherwise return.
+		else if ((strcmp(command->name, "bookmark") == 0) && (strcmp(command->args[0], "-i") == 0)) { 
+			FILE *cd_ptr = NULL;
+			int index = atoi(command->args[1]);	
+			int buffer_counter = 0;
+			char *dir, *to_execute;
+			char buffer[256];
+			int i, j, len;
+			
+			// Getting the initial text directory so I can reach it when I change dir on the process. 
+			char bookmark_loc[1024] = "";
+			strcat(bookmark_loc, init_dir);
+			strcat(bookmark_loc, "/bookmarks.txt");		
+			cd_ptr = fopen(bookmark_loc, "r");
+
+			// If cannot open the file, exit.
+			if(cd_ptr == NULL) {
+				printf("Error opening bookmarks.\n");	
+				return UNKNOWN;
+			}
+
+			//Getting the line user wants to execute.
+			while (fgets(buffer, 256, cd_ptr)) {
+				if(buffer_counter == index) {
+				dir = strdup(buffer);
+					break;
+				}
+				buffer_counter++;
+			}
+
+			//Removing the " and \n from the command we got.
+			len = strlen(dir);					
+			for(i = 0; i < len; i++) {
+        		if((dir[i] == '\"') || (dir[i] == '\n')) {		
+        			for(j = i; j < len; j++){	
+            		dir[j] = dir[j+1];
+           			}
+           		len--;
+           		i--;
+    			}
+    		}
+
+			//Duplicating the command we parsed.
+			to_execute = strdup(dir);
+
+			// If the command is not cd, exit the function.
+			char *dir_token = strtok(dir, " ");
+			if ((dir_token == NULL) || (strcmp(dir_token, "cd") != 0)) {
+				return UNKNOWN;
+			}
+			fclose(cd_ptr);
+
+			// Tokenizing the args to get the directory intended to change.
+			int index_count = 0;
+			char *cd_args[2];
+			char *token = strtok(to_execute, " ");
+			while (token != NULL) {
+				if(index_count == 2) break;
+				cd_args[index_count] = strdup(token);
+				token = strtok(NULL, " ");
+				index_count++;
+			}
+			chdir(cd_args[1]);
+		}	
 		return SUCCESS;
 	}
 	printf("-%s: %s: command not found\n", sysname, command->name);
