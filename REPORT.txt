@@ -1,0 +1,19 @@
+1. There is a Makefile to compile the shellington.c, a simple make command will create the compiled verison.
+
+2. Short command uses memory allocation to store and retrieve data. After the shellington closes, it frees the space.
+
+3. Bookmark saves the data into a .txt file and retrieves the data from it. You can use the command from
+any directory since path is taken accordingly.
+
+4. Remindme also uses .txt file to construst the command will be passsed on to the crontab. When the shellington
+closes, the previous inputs are not deleted. If you want to delete so, I've implemented an extra command such as:
+"remindme remove all" which clears the crontab tasks and deleted the .txt file.
+
+5. my command is "rps" (stands for rock paper scissors.) it takes one argument and its one of: rock, paper, scissors.
+After your call, a random move is also selected for the shellington and you simply play a rock paper scissors game. The 
+data is kept at memory and updated as you play. It releases and resets the data if shellington closes.
+
+6. For the kernel module part, I wasnt able to implemet the asked functions. I only implemeted partial of the pstraverse.
+Partial implementation is stored in the modules file, which also has its own Makefile. Use "make" to compile the module.ko. 
+Module deployment of shellington is not implemented. I also have a "make test" command for module part that clears the dmesg, 
+deploys and removes the module. Note that to use "make test" first you should call "make".
